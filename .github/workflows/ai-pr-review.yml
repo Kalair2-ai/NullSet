@@ -1,27 +1,45 @@
-name: AI PR Review
+name: PR Review (SwiftLint + AI)
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
-  ai-review:
-    runs-on: ubuntu-latest
+  review:
+    runs-on: macos-latest
 
     steps:
-      # Checkout repo with full history (important for diffs)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Get the PR diff
+      # Install SwiftLint
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      # ✅ Correct way: use reviewdog GitHub Action
+      - name: Run SwiftLint with Reviewdog
+        uses: reviewdog/action-reviewdog@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_on_error: false
+          filter_mode: diff_context
+          tool_name: swiftlint
+          run: swiftlint lint --quiet
+
+      # Generate PR Diff
       - name: Generate PR Diff
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
 
-      # Run AI Review with OpenAI
+      # AI Review
       - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -40,7 +58,6 @@ jobs:
 
           echo "AI Review: $review"
 
-          # Post the review back to the PR
           curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -X POST \
             -d "{\"body\": \"$review\"}" \
