@@ -2,41 +2,45 @@ name: AI PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   ai-review:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Checkout repo with full history (important for diffs)
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Get PR Diff
-        id: diff
+      # Get the PR diff
+      - name: Generate PR Diff
         run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
+          git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
 
+      # Run AI Review with OpenAI
       - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          review=$(curl https://api.openai.com/v1/chat/completions \
+          review=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -d "{
               \"model\": \"gpt-4o-mini\",
               \"messages\": [
-                {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide constructive, concise comments.\"},
-                {\"role\": \"user\", \"content\": \"Review this PR diff for Swift best practices, MVVM architecture, and in-app purchase flows:\n$(cat pr.diff)\"}
+                {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide concise, constructive comments (Swift, SwiftUI, MVVM, in-app purchase logic, best practices).\"},
+                {\"role\": \"user\", \"content\": \"Review this PR diff:\n$(cat pr.diff)\"}
               ],
               \"max_tokens\": 500
             }" | jq -r '.choices[0].message.content')
 
           echo "AI Review: $review"
 
-          # Post review as a PR comment
+          # Post the review back to the PR
           curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -X POST \
             -d "{\"body\": \"$review\"}" \
