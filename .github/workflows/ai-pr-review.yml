@@ -9,39 +9,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repo with full history (important for diffs)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Get the PR diff
       - name: Generate PR Diff
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
 
-      # Run AI Review with OpenAI
       - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          review=$(curl -s https://api.openai.com/v1/chat/completions \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -d "{
-              \"model\": \"gpt-4o-mini\",
-              \"messages\": [
-                {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide concise, constructive comments (Swift, SwiftUI, MVVM, in-app purchase logic, best practices).\"},
-                {\"role\": \"user\", \"content\": \"Review this PR diff:\n$(cat pr.diff)\"}
-              ],
-              \"max_tokens\": 500
-            }" | jq -r '.choices[0].message.content')
+          # Split diff into chunks of 1500 lines (to avoid token limits)
+          split -l 1500 pr.diff pr_chunk_
 
-          echo "AI Review: $review"
+          for file in pr_chunk_*; do
+            diff_chunk=$(cat "$file" | jq -Rs .) # escape newlines/quotes safely
 
-          # Post the review back to the PR
-          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -X POST \
-            -d "{\"body\": \"$review\"}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+            review=$(curl -s https://api.openai.com/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -d "{
+                \"model\": \"gpt-4o-mini\",
+                \"messages\": [
+                  {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide concise, constructive comments (Swift, SwiftUI, MVVM, in-app purchase logic, best practices).\"},
+                  {\"role\": \"user\", \"content\": \"Review this PR diff chunk:\n$diff_chunk\"}
+                ],
+                \"max_tokens\": 500
+              }" | jq -r '.choices[0].message.content')
+
+            echo "AI Review: $review"
+
+            # Post the review back to the PR
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -X POST \
+              -d "{\"body\": \"$review\"}" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          done
