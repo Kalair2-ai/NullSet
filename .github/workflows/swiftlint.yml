@@ -18,13 +18,14 @@ jobs:
       - name: Install SwiftLint
         run: brew install swiftlint
 
-      - name: Run SwiftLint
-        run: |
-          swiftlint lint --quiet --reporter json > swiftlint-report.json || true
-
-      - name: Post SwiftLint comments to PR
-        uses: reviewdog/action-swiftlint@v1
+      - name: Run SwiftLint with reviewdog
+        uses: reviewdog/action-reviewdog@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          tool_name: swiftlint
           reporter: github-pr-review
           level: warning
+          filter_mode: diff_context
+          fail_on_error: false
+          run: |
+            swiftlint lint --quiet
