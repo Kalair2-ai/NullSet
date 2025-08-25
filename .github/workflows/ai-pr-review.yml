@@ -13,44 +13,33 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Checkout full repo history (needed for diffs)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # --------------------------
-      # Step 1: Install tools
-      # --------------------------
+      # Install SwiftLint
       - name: Install SwiftLint
         run: brew install swiftlint
 
-      - name: Install reviewdog
-        run: brew install reviewdog
-
-      # --------------------------
-      # Step 2: SwiftLint + Reviewdog
-      # --------------------------
+      # ✅ Correct way: use reviewdog GitHub Action
       - name: Run SwiftLint with Reviewdog
-        run: |
-          swiftlint lint --quiet | reviewdog -f=swiftlint \
-            -name="SwiftLint" \
-            -reporter=github-pr-review \
-            -level=warning
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: reviewdog/action-reviewdog@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_on_error: false
+          filter_mode: diff_context
+          tool_name: swiftlint
+          run: swiftlint lint --quiet
 
-      # --------------------------
-      # Step 3: Generate PR Diff
-      # --------------------------
+      # Generate PR Diff
       - name: Generate PR Diff
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
 
-      # --------------------------
-      # Step 4: Run AI Review
-      # --------------------------
+      # AI Review
       - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -69,7 +58,6 @@ jobs:
 
           echo "AI Review: $review"
 
-          # Post AI review as PR comment
           curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -X POST \
             -d "{\"body\": \"$review\"}" \
