@@ -10,6 +10,7 @@ import CoreXLSX
 
 func convertXLSXToStrings(filePath: String, outputDir: String) throws {
     let file = XLSXFile(filepath: filePath)!
+    let newFile = file
     guard let sharedStrings = try file.parseSharedStrings() else {
         return
     }
