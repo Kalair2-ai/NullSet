@@ -13,37 +13,38 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Checkout repo
-      - uses: actions/checkout@v4
+      # Checkout full repo history (needed for diffs)
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ------------------------
-      # 1. SwiftLint + Reviewdog
-      # ------------------------
+      # --------------------------
+      # Step 1: SwiftLint + Reviewdog
+      # --------------------------
       - name: Install SwiftLint
         run: brew install swiftlint
 
-      - name: Run SwiftLint with reviewdog
-        uses: reviewdog/action-reviewdog@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          level: warning
-          fail_on_error: false
-          filter_mode: diff_context
-          tool_name: swiftlint
-          run: |
-            swiftlint lint --quiet
+      - name: Run SwiftLint with Reviewdog
+        run: |
+          swiftlint lint --quiet | reviewdog -f=swiftlint \
+            -name="SwiftLint" \
+            -reporter=github-pr-review \
+            -level=warning
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ------------------------
-      # 2. AI PR Review
-      # ------------------------
+      # --------------------------
+      # Step 2: Generate PR Diff
+      # --------------------------
       - name: Generate PR Diff
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
 
+      # --------------------------
+      # Step 3: Run AI Review
+      # --------------------------
       - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -54,7 +55,7 @@ jobs:
             -d "{
               \"model\": \"gpt-4o-mini\",
               \"messages\": [
-                {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide concise, constructive comments about Swift, SwiftUI, MVVM, in-app purchases, unused variables, and best practices.\"},
+                {\"role\": \"system\", \"content\": \"You are a senior iOS developer reviewing pull requests. Provide concise, constructive comments (Swift, SwiftUI, MVVM, in-app purchase logic, best practices).\"},
                 {\"role\": \"user\", \"content\": \"Review this PR diff:\n$(cat pr.diff)\"}
               ],
               \"max_tokens\": 500
